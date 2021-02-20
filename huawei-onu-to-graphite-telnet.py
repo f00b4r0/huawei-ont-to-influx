@@ -91,28 +91,28 @@ for line in optic_stats.split("\r\n"):
     re_RxPower = re.compile("^RxPower      :\s*(\S*)\s*\(dBm\)$")
     result_RxPower = re_RxPower.match(line)[1]
     if isfloat(result_RxPower):
-      graphite_data.append("{:s}.rxpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_RxPower))*1000, current_date))
+      graphite_data.append("{:s}.rxpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_RxPower)*1000), current_date))
 
   # TxPower
   elif line.startswith('TxPower'):
     re_TxPower = re.compile("^TxPower      :\s*(\S*)\s*\(dBm\)$")
     result_TxPower = re_TxPower.match(line)[1]
     if isfloat(result_TxPower):
-      graphite_data.append("{:s}.txpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_TxPower))*1000, current_date))
+      graphite_data.append("{:s}.txpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_TxPower)*1000), current_date))
  
   # RfRxPower
   elif line.startswith('RfRxPower'):
     re_RfRxPower = re.compile("^RfRxPower    :\s*(\S*)\s*\(dBm\)$")
     result_RfRxPower = re_RfRxPower.match(line)[1]
     if isfloat(result_RfRxPower):
-      graphite_data.append("{:s}.rfrxpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_RfRxPower))*1000, current_date))
+      graphite_data.append("{:s}.rfrxpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_RfRxPower)*1000), current_date))
 
   # RfOutputPower
   elif line.startswith('RfOutputPower'):
     re_RfOutputPower = re.compile("^RfOutputPower:\s*(\S*)\s*\(dBmV\)$")
     result_RfOutputPower = re_RfOutputPower.match(line)[1]
     if isfloat(result_RfOutputPower):
-      graphite_data.append("{:s}.rfoutputpower_in_mdbmv {:d} {:d}".format(graphite_prefix, int(float(result_RfOutputPower))*1000, current_date))
+      graphite_data.append("{:s}.rfoutputpower_in_mdbmv {:d} {:d}".format(graphite_prefix, int(float(result_RfOutputPower)*1000), current_date))
 
 print("\n".join(graphite_data))
 
