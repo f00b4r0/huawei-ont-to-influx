@@ -114,7 +114,7 @@ for line in optic_stats.split("\r\n"):
     if isfloat(result_RfOutputPower):
       graphite_data.append("{:s}.rfoutputpower_in_mdbmv {:d} {:d}".format(graphite_prefix, int(float(result_RfOutputPower)*1000), current_date))
 
-print("\n".join(graphite_data))
+#print("\n".join(graphite_data))
 
 # Send to Carbon/Graphite
 carbon_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
