@@ -1,100 +1,105 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-3.0
+# Inspired from https://github.com/loiklo/huawei-onu-to-graphite
+
 import requests
-import base64
-import time
-import socket
+from base64 import b64encode
+from influxdb import InfluxDBClient
+from time import sleep
 
 ## Default
-#ont_host     = "192.168.100.1"
-#ont_username = "root"
-#ont_password = "adminHW"
+# ont_host     = "192.168.100.1"
+# ont_username = "root"
+# ont_password = "adminHW"
 
 ## Orange custom
-#ont_host     = "192.168.4.254"
-#ont_username = "root"
-#ont_password = "admin"
+# ont_host     = "192.168.4.254"
+# ont_username = "root"
+# ont_password = "admin"
 
 # User vars
-ont_host        = "192.168.4.254"
-ont_username    = "root"
-ont_password    = "admin"
-graphite_host   = "graphite.lab"
-graphite_port   = 2003
-graphite_prefix = "stats.network.ftth.ont"
 
-# Python method to test if a string is a float
-def isfloat(value):
-  try:
-    float(value)
-    return True
-  except ValueError:
-    return False
+ont_host = '192.168.100.1'
+ont_username = 'root'
+ont_password = 'admin'
+influx_host = 'grafana'
+influx_db = 'ONT'
 
-# Build URL prefix
-ont_urlprefix = "http://" + ont_host
+interval = 30   # NB: the ONT deauths after 60s, using lower values reuses the established HTTP session
 
-# Start http session
-ont_session = requests.Session()
-# Get the mystery random stuff
-req = ont_session.post(ont_urlprefix + "/asp/GetRandCount.asp")
-sid = req.text[-32:]
-# Session authentication
-headers = {"Cookie": "Cookie=body:Language:english:id=-1"}
-auth_data = {"UserName": ont_username, "PassWord": base64.b64encode(ont_password.encode()), "x.X_HW_Token": sid}
-req = ont_session.post(ont_urlprefix + "/login.cgi", headers=headers, data=auth_data)
-# Get current date for Graphite
-current_date = int(time.time())
-# Get optic info
-req = ont_session.get(ont_urlprefix + "/html/amp/opticinfo/opticinfo.asp")
-# Logout
-ont_session.post(ont_urlprefix + "/logout.cgi?RequestFile=html/logout.html")
+wantedFields = set(['transOpticPower','revOpticPower','voltage','temperature','bias','LosStatus'])
 
-# Result parsing
-graphite_data = []
-for line in req.text.split("\n"):
-  if line.startswith('var opticInfos'):
-    opticInfos_split = line.split("\",\"")
-    # LinkStatus
-    # ToDo
+# don't touch below this line
 
-    # TxPower
-    result_TxPower = opticInfos_split[1]
-    if isfloat(result_TxPower):
-      graphite_data.append("{:s}.txpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_TxPower)*1000), current_date))
-      graphite_data.append("{:s}.linkstatus 1 {:d}".format(graphite_prefix, current_date))
-      graphite_data.append("{:s}.linkstatus_up 1 {:d}".format(graphite_prefix, current_date))
-    else:
-      graphite_data.append("{:s}.linkstatus 0 {:d}".format(graphite_prefix, current_date))
-      graphite_data.append("{:s}.linkstatus_down 1 {:d}".format(graphite_prefix, current_date))
+opticInfo = {
+    'domain': None,
+    'transOpticPower': None,
+    'revOpticPower': None,
+    'voltage': None,
+    'temperature': None,
+    'bias': None,
+    'rfRxPower': None,
+    'rfOutputPower': None,
+    'VendorName': None,
+    'VendorSN': None,   # used as tag
+    'DateCode': None,
+    'TxWaveLength': None,
+    'RxWaveLength': None,
+    'MaxTxDistance': None,
+    'LosStatus': None,
+    }
 
-    # RxPower
-    result_RxPower = opticInfos_split[2]
-    if isfloat(result_RxPower):
-      graphite_data.append("{:s}.rxpower_in_mdbm {:d} {:d}".format(graphite_prefix, int(float(result_RxPower)*1000), current_date))
+ont_urlprefix = 'http://' + ont_host
 
-    # Voltage
-    result_Voltage = opticInfos_split[3]
-    if str(result_Voltage).isdigit():
-      graphite_data.append("{:s}.voltage_in_mv {:d} {:d}".format(graphite_prefix, int(result_Voltage), current_date))
+def cleanval(value):
+    try:
+        return float(value)
+    except:
+        return value.strip()
 
-    # Temperature
-    result_Temperature = opticInfos_split[4]
-    if str(result_Temperature).isdigit():
-      graphite_data.append("{:s}.temperature_in_c {:d} {:d}".format(graphite_prefix, int(result_Temperature), current_date))
+def login(s):
+  # Get token
+    r = s.post(ont_urlprefix + '/asp/GetRandCount.asp')
+    sid = r.text[-32:]
+  # Session authentication
+    headers = {'Cookie': 'Cookie=body:Language:english:id=-1'}
+    auth_data = {'UserName': ont_username,
+                 'PassWord': b64encode(ont_password.encode()),
+                 'x.X_HW_Token': sid}
+    r = s.post(ont_urlprefix + '/login.cgi', headers=headers,
+               data=auth_data)
+    return r.ok
 
-    # BiasCurrent
-    result_BiasCurrent = opticInfos_split[5]
-    if str(result_BiasCurrent).isdigit():
-      graphite_data.append("{:s}.biascurrent_in_ma {:d} {:d}".format(graphite_prefix, int(result_BiasCurrent), current_date))
+def get_oi_iter(s):
+    r = s.get(ont_urlprefix + '/html/amp/opticinfo/opticinfo.asp')
+    if r.encoding is None:
+        r.encoding = 'utf-8'
+    return r.iter_lines(decode_unicode=True)
 
-    break
 
-#print("\n".join(graphite_data))
+with requests.Session() as s, InfluxDBClient(host=influx_host, database=influx_db) as client:
+    while True:
+        for line in get_oi_iter(s):
+            # The ONT doesn't report login failure in a programmatic way, we have to parse the content
+            if 'Waiting...' in line:
+                login(s)
+                sleep(1)    # avoid DoSing if it really doesn't work
+                break
+            if line.startswith('var opticInfos ='):
+                optdata = line[line.find('"') + 1:line.rfind('"')].split('","')
+                oi = dict(zip(opticInfo, map(cleanval, optdata)))
 
-# Send to Carbon/Graphite
-carbon_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-carbon_socket.connect((graphite_host, graphite_port))
-carbon_socket.sendall(("\n".join(graphite_data) + "\n").encode())
-carbon_socket.close()
+                influx_data = [{
+                    'measurement': 'OpticInfo',
+                    'tags': {'VendorSN': oi['VendorSN']},
+                    'fields': {k: v for k, v in oi.items() if k in wantedFields}
+                    }]
 
-exit(0)
+
+                client.write_points(influx_data)
+                sleep(interval)
+                break
+
+    # for a clean logout, but this does not happen
+    #s.post(ont_urlprefix + '/logout.cgi?RequestFile=html/logout.html')
