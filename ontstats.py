@@ -56,7 +56,11 @@ def cleanval(value):
     try:
         return float(value)
     except:
-        return value.strip()
+        value = value.strip()
+        if not value:
+            return None
+        else:
+            return value
 
 def login(s):
   # Get token
